@@ -13,6 +13,7 @@ import "./Label.css";
 import { updateDoc } from "firebase/firestore";
 import { collection, getDocs } from "firebase/firestore";
 import { getStorage, getMetadata } from "firebase/storage";
+import CropComponent from "./CropComponent";
 const Label = forwardRef((props, sref) => {
   const [imageList, setImageList] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -25,6 +26,7 @@ const Label = forwardRef((props, sref) => {
   const [allLabeledImages, setAllLabeledImages] = useState([]); // Danh sách ảnh đã labeled
   const [pageIndex, setPageIndex] = useState(0); // Trang hiện tại
   const [totalImages, setTotalImages] = useState(0);
+  const [showCrop, setShowCrop] = useState(false);
 
   useImperativeHandle(sref, () => ({
     handleUpload: (fileUrls) => {
@@ -84,9 +86,7 @@ const Label = forwardRef((props, sref) => {
 
       // Sắp xếp danh sách file theo lastModified (mới nhất trước)
       filesWithMetadata.sort((a, b) => b.lastModified - a.lastModified);
-      console.log("====================================");
-      console.log("filesWithMetadata", filesWithMetadata);
-      console.log("====================================");
+
       // Cập nhật danh sách file đã sắp xếp
       setImageList(filesWithMetadata.map((file) => file.ref));
       setTotalImages(filesWithMetadata.length); // Cập nhật số lượng ảnh
@@ -326,47 +326,73 @@ const Label = forwardRef((props, sref) => {
   return (
     <div className="label-container">
       <div className="label-section">
-        <h1>Label me</h1>
-        {imageUrl && (
-          <div className="label-area">
-            <img src={imageUrl} alt="Ảnh đang label" width="300" />
-            <p>
-              <b>File:</b> {selectedImage?.name}
-            </p>
-            <div className="navigation-container">
-              <button onClick={handlePrevImage} disabled={currentIndex === 0}>
-                {"<"} Ảnh trước
-              </button>
-              <span>
-                {currentIndex + 1} / {imageList.length}
-              </span>
-              <button
-                onClick={handleNextImage}
-                disabled={currentIndex === imageList.length - 1}
-              >
-                Ảnh sau {">"}
-              </button>
-            </div>
-            <p>
-              <b>Trạng thái:</b>{" "}
-              {imageInfo.label
-                ? `${imageInfo.label} - ${imageInfo.labeledBy}`
-                : "Chưa label"}
-            </p>
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Nhập nhãn..."
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSaveLabel()}
-            />
-            <button
-              onClick={() => handleDeleteLabeledImage(selectedImage.name)}
-            >
-              Xóa ảnh
+        <h1>Label Image</h1>
+        {imageUrl && !showCrop ? (
+          <>
+            {imageUrl && (
+              <div className="label-area">
+                <img src={imageUrl} alt="Ảnh đang label" width="300" />
+                <p>
+                  <b>File:</b> {selectedImage?.name}
+                </p>
+                <div className="navigation-container">
+                  <button
+                    onClick={handlePrevImage}
+                    disabled={currentIndex === 0}
+                  >
+                    {"<"} Ảnh trước
+                  </button>
+                  <span>
+                    {currentIndex + 1} / {imageList.length}
+                  </span>
+                  <button
+                    onClick={handleNextImage}
+                    disabled={currentIndex === imageList.length - 1}
+                  >
+                    Ảnh sau {">"}
+                  </button>
+                </div>
+                <p>
+                  <b>Trạng thái:</b>{" "}
+                  {imageInfo.label
+                    ? `${imageInfo.label} - ${imageInfo.labeledBy}`
+                    : "Chưa label"}
+                </p>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  placeholder="Nhập nhãn..."
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSaveLabel()}
+                />
+                <button
+                  onClick={() => handleDeleteLabeledImage(selectedImage.name)}
+                >
+                  Xóa ảnh
+                </button>
+              </div>
+            )}
+            <button type="success" onClick={() => setShowCrop(true)}>
+              Crop Image
             </button>
-          </div>
+          </>
+        ) : (
+          <CropComponent
+            imageUrl={imageUrl}
+            onUploadComplete={(uploadedData) => {
+              setShowCrop(false);
+              setLabel(uploadedData.label);
+              // Prepend the new labeled image to latestLabeled
+              setLatestLabeled((prev) =>
+                [
+                  { label: uploadedData.label, url: uploadedData.url },
+                  ...prev,
+                ].slice(0, 6)
+              );
+              fetchAllLabeledImages();
+            }}
+          />
         )}
       </div>
       <div className="recent-labels">
