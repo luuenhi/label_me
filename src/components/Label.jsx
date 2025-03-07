@@ -268,6 +268,39 @@ const Label = forwardRef((props, sref) => {
     setPageIndex(page);
   };
 
+  const handleDeleteLabeledImage = async (imageName) => {
+    try {
+      const imageRef = ref(imageDb, `multipleFiles/${imageName}`);
+
+      // Kiểm tra nếu URL hợp lệ (chỉ để debug, không thực sự cần thiết để xóa)
+      await getDownloadURL(imageRef);
+
+      // Xóa ảnh khỏi Firebase Storage
+      await deleteObject(imageRef);
+
+      // Cập nhật danh sách ảnh ngay lập tức
+      setImageList((prevList) => {
+        const updatedList = prevList.filter(
+          (image) => image.name !== imageName
+        );
+
+        // Cập nhật chỉ số ảnh hiện tại nếu cần
+        setCurrentIndex((prevIndex) =>
+          Math.min(prevIndex, updatedList.length - 1)
+        );
+
+        return updatedList;
+      });
+
+      // Cập nhật tổng số ảnh
+      setTotalImages((prevTotal) => Math.max(prevTotal - 1, 0));
+
+      console.log(`Đã xóa ảnh: ${imageName}`);
+    } catch (error) {
+      console.error("Lỗi khi xóa ảnh:", error);
+    }
+  };
+
   const handlePrevPage = () => {
     if (pageIndex > 0) {
       loadLabeledImages(allLabeledImages, pageIndex - 1);
@@ -277,19 +310,6 @@ const Label = forwardRef((props, sref) => {
   const handleNextPage = () => {
     if ((pageIndex + 1) * 6 < allLabeledImages.length) {
       loadLabeledImages(allLabeledImages, pageIndex + 1);
-    }
-  };
-
-  const handleDeleteLabeledImage = async (imageName) => {
-    try {
-      const imageRef = ref(imageDb, `multipleFiles/${imageName}`);
-      const url = await getDownloadURL(imageRef); // Kiểm tra nếu URL hợp lệ
-      await deleteObject(imageRef); // Xóa ảnh trên Storage
-
-      loadImageList();
-      console.log(`Đã xóa ảnh: ${imageName}`);
-    } catch (error) {
-      console.error("Lỗi khi xóa ảnh:", error);
     }
   };
 
@@ -367,7 +387,10 @@ const Label = forwardRef((props, sref) => {
                   onKeyDown={(e) => e.key === "Enter" && handleSaveLabel()}
                 />
                 <button
-                  onClick={() => handleDeleteLabeledImage(selectedImage.name)}
+                  onClick={async () => {
+                    await handleDeleteLabeledImage(selectedImage.name);
+                    handleNextImage();
+                  }}
                 >
                   Xóa ảnh
                 </button>
@@ -380,17 +403,54 @@ const Label = forwardRef((props, sref) => {
         ) : (
           <CropComponent
             imageUrl={imageUrl}
-            onUploadComplete={(uploadedData) => {
+            onUploadComplete={async (uploadedData) => {
               setShowCrop(false);
               setLabel(uploadedData.label);
-              // Prepend the new labeled image to latestLabeled
-              setLatestLabeled((prev) =>
-                [
-                  { label: uploadedData.label, url: uploadedData.url },
-                  ...prev,
-                ].slice(0, 6)
-              );
-              fetchAllLabeledImages();
+              // Ensure uploadedData contains the name property
+              if (uploadedData.name) {
+                // Save the new label and coordinates to Firestore
+                await setDoc(
+                  doc(firestoreDb, "labeled_images", uploadedData.name),
+                  {
+                    label: uploadedData.label.trim(),
+                    labeledBy: "user@email.com",
+                    imagePath: `labeled_images/${uploadedData.name}`,
+                    timestamp: new Date().toISOString(),
+                    coordinates: uploadedData.coordinates, // Save coordinates
+                  }
+                );
+                // Prepend the new labeled image to latestLabeled
+                setLatestLabeled((prev) =>
+                  [
+                    { label: uploadedData.label, url: uploadedData.url },
+                    ...prev,
+                  ].slice(0, 6)
+                );
+                // Delete the original image
+                if (selectedImage) {
+                  const oldImageRef = ref(
+                    imageDb,
+                    `multipleFiles/${selectedImage.name}`
+                  );
+                  await deleteObject(oldImageRef);
+                  setImageList((prev) =>
+                    prev.filter((image) => image.name !== selectedImage.name)
+                  );
+                  // Automatically move to the next image
+                  if (imageList.length > 1) {
+                    loadImage(imageList[1], 0);
+                  } else {
+                    setImageUrl("");
+                    setSelectedImage(null);
+                  }
+                }
+                fetchAllLabeledImages();
+                loadImageList(); // Reload the image list to reflect the deletion
+              } else {
+                console.error(
+                  "Uploaded data does not contain a name property."
+                );
+              }
             }}
           />
         )}

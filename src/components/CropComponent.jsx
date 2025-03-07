@@ -42,8 +42,26 @@ export default function CropComponent({ imageUrl, onUploadComplete }) {
         await uploadBytes(imageRef, file);
         const url = await getDownloadURL(imageRef);
         console.log("Uploading file successful:", url);
-        // Pass an object containing the label and URL to onUploadComplete
-        if (onUploadComplete) onUploadComplete({ label: fileName, url });
+
+        // Get the coordinates of the cropped area
+        const cropper = cropperRef.current?.cropper;
+        const cropBoxData = cropper.getCropBoxData();
+        const coordinates = {
+          topLeft: { x: cropBoxData.left, y: cropBoxData.top },
+          bottomRight: {
+            x: cropBoxData.left + cropBoxData.width,
+            y: cropBoxData.top + cropBoxData.height,
+          },
+        };
+
+        // Pass an object containing the label, URL, and coordinates to onUploadComplete
+        if (onUploadComplete)
+          onUploadComplete({
+            name: uniqueFileName,
+            label: fileName,
+            url,
+            coordinates,
+          });
       } catch (error) {
         console.log("Upload error:", error);
       }
