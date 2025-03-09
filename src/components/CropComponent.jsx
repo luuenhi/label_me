@@ -1,103 +1,181 @@
 import React, { useRef, useState } from "react";
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
 import { imageDb } from "../firebase/firebaseConfig";
 import { v4 as uuidv4 } from "uuid";
+import "./CropComponent.css";
 
-// Add the dataURLtoFile helper function
-const dataURLtoFile = (dataurl, filename) => {
-  const arr = dataurl.split(",");
-  const mime = arr[0].match(/:(.*?);/)[1];
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) {
-    u8arr[n] = bstr.charCodeAt(n);
-  }
-  return new File([u8arr], filename, { type: mime });
-};
-
-export default function CropComponent({ imageUrl, onUploadComplete }) {
-  // updated to accept onUploadComplete
+export default function CropComponent({
+  imageUrl,
+  selectedImage,
+  imageList,
+  setImageList,
+  setSelectedImage,
+  setImageUrl,
+  onUploadComplete,
+  onExit,
+}) {
   const cropperRef = useRef(null);
-  const [croppedImage, setCroppedImage] = useState(null);
-  // State for file name input
+  const [croppedImages, setCroppedImages] = useState([]);
   const [fileName, setFileName] = useState("");
 
-  const onCrop = () => {
-    const cropper = cropperRef.current?.cropper;
-    const croppedDataUrl = cropper.getCroppedCanvas().toDataURL();
-    setCroppedImage(croppedDataUrl);
-    console.log(croppedDataUrl);
+  // Convert DataURL to File
+  const dataURLtoFile = (dataurl, filename) => {
+    const arr = dataurl.split(",");
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
   };
 
-  const handleUpload = async () => {
-    if (croppedImage && fileName) {
-      const file = dataURLtoFile(croppedImage, fileName);
+  // Crop image
+  const onCrop = () => {
+    const cropper = cropperRef.current?.cropper;
+    if (cropper && fileName) {
+      const croppedDataUrl = cropper.getCroppedCanvas().toDataURL();
+      setCroppedImages((prev) => [
+        ...prev,
+        { dataUrl: croppedDataUrl, fileName },
+      ]);
+      setFileName("");
+    } else {
+      alert("Please enter a label before cropping.");
+    }
+  };
+
+  // Delete cropped image
+  const handleDeleteCroppedImage = (index) => {
+    setCroppedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Upload all cropped images
+  const handleUploadAll = async () => {
+    if (croppedImages.length === 0) {
+      alert("No cropped images to upload.");
+      return;
+    }
+
+    console.log("Uploading all cropped images:", croppedImages);
+    const uploadedDataArray = [];
+
+    for (const { dataUrl, fileName } of croppedImages) {
+      const file = dataURLtoFile(dataUrl, fileName);
       try {
         const uniqueFileName = `${uuidv4()}_${file.name}`;
         const imagePath = `labeled_images/${uniqueFileName}`;
         const imageRef = ref(imageDb, imagePath);
+
         await uploadBytes(imageRef, file);
         const url = await getDownloadURL(imageRef);
-        console.log("Uploading file successful:", url);
 
-        // Get the coordinates of the cropped area
         const cropper = cropperRef.current?.cropper;
-        const cropBoxData = cropper.getCropBoxData();
-        const coordinates = {
-          topLeft: { x: cropBoxData.left, y: cropBoxData.top },
-          bottomRight: {
-            x: cropBoxData.left + cropBoxData.width,
-            y: cropBoxData.top + cropBoxData.height,
-          },
-        };
+        let coordinates = null;
+        if (cropper) {
+          const cropBoxData = cropper.getCropBoxData();
+          coordinates = {
+            topLeft: { x: cropBoxData.left, y: cropBoxData.top },
+            bottomRight: {
+              x: cropBoxData.left + cropBoxData.width,
+              y: cropBoxData.top + cropBoxData.height,
+            },
+          };
+        }
 
-        // Pass an object containing the label, URL, and coordinates to onUploadComplete
-        if (onUploadComplete)
-          onUploadComplete({
-            name: uniqueFileName,
-            label: fileName,
-            url,
-            coordinates,
-          });
+        uploadedDataArray.push({
+          name: uniqueFileName,
+          label: fileName,
+          url,
+          coordinates,
+        });
       } catch (error) {
-        console.log("Upload error:", error);
+        console.error("Upload error:", error);
+        return;
       }
-    } else {
-      console.log("Missing cropped image or file name.");
     }
+
+    // Delete original image if all images are uploaded successfully
+    if (uploadedDataArray.length === croppedImages.length && selectedImage) {
+      try {
+        const originalImageRef = ref(
+          imageDb,
+          `multipleFiles/${selectedImage.name}`
+        );
+        await deleteObject(originalImageRef);
+        console.log("Original image deleted:", selectedImage.name);
+
+        setImageList((prev) =>
+          prev.filter((image) => image.name !== selectedImage.name)
+        );
+        if (imageList.length > 1) {
+          setSelectedImage(imageList[1]);
+        } else {
+          setImageUrl("");
+          setSelectedImage(null);
+        }
+      } catch (error) {
+        console.error("Error deleting original image:", error);
+      }
+    }
+
+    setCroppedImages([]);
+    if (onUploadComplete) onUploadComplete(uploadedDataArray);
   };
 
   return (
-    <>
-      <Cropper
-        src={imageUrl}
-        style={{ height: 400, width: "100%" }}
-        // Cropper.js options
-        initialAspectRatio={16 / 9}
-        guides={true}
-        crop={onCrop}
-        ref={cropperRef}
-      />
-      {/* Render cropped image if available */}
-      {croppedImage && (
-        <div>
-          <h2>Cropped Image:</h2>
-          <img src={croppedImage} alt="Cropped" />
-        </div>
-      )}
-      {/* New input and button for upload */}
-      <div>
+    <div className="crop-container">
+      <div className="cropper-wrapper">
+        <Cropper
+          src={imageUrl}
+          style={{ height: 400, width: "100%" }}
+          initialAspectRatio={16 / 9}
+          guides={true}
+          ref={cropperRef}
+        />
+      </div>
+      <div className="upload-controls">
         <input
           type="text"
-          placeholder="Enter file name"
+          placeholder="Enter label..."
           value={fileName}
           onChange={(e) => setFileName(e.target.value)}
         />
-        <button onClick={handleUpload}>Upload Cropped Image</button>
+        <button onClick={onCrop}>Crop</button>
       </div>
-    </>
+      <div className="cropped-images-container">
+        {croppedImages.map((img, index) => (
+          <div key={index} className="cropped-image-wrapper">
+            <img
+              src={img.dataUrl}
+              alt={`Cropped ${index}`}
+              className="cropped-image"
+            />
+            <button
+              className="delete-button"
+              onClick={() => handleDeleteCroppedImage(index)}
+            >
+              X
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="button-group">
+        <button onClick={handleUploadAll} className="upload-button">
+          Upload All
+        </button>
+        <button onClick={onExit} className="exit-button">
+          Exit
+        </button>
+      </div>
+    </div>
   );
 }

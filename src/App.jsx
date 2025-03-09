@@ -15,7 +15,6 @@ function App() {
 
   return (
     <div className="App">
-      <h1>Upload to Firebase</h1>
       <FirebaseImageUpload onUploadSuccess={handleUploadSuccess} />
       <Label ref={labelRef} />
     </div>

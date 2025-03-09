@@ -1,4 +1,4 @@
-import {
+import React, {
   useState,
   useEffect,
   useRef,
@@ -6,14 +6,28 @@ import {
   useImperativeHandle,
 } from "react";
 import { imageDb, firestoreDb } from "../firebase/firebaseConfig";
-import { listAll, ref, getDownloadURL, deleteObject } from "firebase/storage"; // Ensure correct import
-import { deleteField, doc, getDoc, setDoc } from "firebase/firestore";
-import { uploadBytes } from "firebase/storage";
-import "./Label.css";
-import { updateDoc } from "firebase/firestore";
-import { collection, getDocs } from "firebase/firestore";
-import { getStorage, getMetadata } from "firebase/storage";
+import {
+  listAll,
+  ref,
+  getDownloadURL,
+  deleteObject,
+  getMetadata,
+  uploadBytes, // Add this line
+} from "firebase/storage";
+import {
+  deleteField,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  getDocs,
+  deleteDoc,
+} from "firebase/firestore";
 import CropComponent from "./CropComponent";
+import { AiTwotoneDelete } from "react-icons/ai";
+import "./Label.css";
+
 const Label = forwardRef((props, sref) => {
   const [imageList, setImageList] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -23,18 +37,18 @@ const Label = forwardRef((props, sref) => {
   const [imageInfo, setImageInfo] = useState({ label: "", labeledBy: "" });
   const [latestLabeled, setLatestLabeled] = useState([]);
   const inputRef = useRef(null);
-  const [allLabeledImages, setAllLabeledImages] = useState([]); // Danh sách ảnh đã labeled
-  const [pageIndex, setPageIndex] = useState(0); // Trang hiện tại
+  const [allLabeledImages, setAllLabeledImages] = useState([]);
+  const [pageIndex, setPageIndex] = useState(0);
   const [totalImages, setTotalImages] = useState(0);
   const [showCrop, setShowCrop] = useState(false);
 
   useImperativeHandle(sref, () => ({
     handleUpload: (fileUrls) => {
       setImageUrl(fileUrls);
-      // setImageList((prevList) => [...prevList, ...fileUrls]);
       loadImageList();
     },
   }));
+
   useEffect(() => {
     loadImageList();
     fetchAllLabeledImages();
@@ -44,21 +58,19 @@ const Label = forwardRef((props, sref) => {
     if (imageList.length > 0) {
       loadImage(imageList[imageList.length - 1], 0);
     } else {
-      setImageUrl(""); // Nếu hết ảnh, ẩn ảnh hiện tại
+      setImageUrl("");
       setSelectedImage(null);
     }
-  }, [imageList]); // Chạy mỗi khi imageList thay đổi
+  }, [imageList]);
 
   useEffect(() => {
     const fetchImages = async () => {
-      const storage = getStorage();
-      const storageRef = ref(imageDb, "images/"); // Ensure correct usage
+      const storageRef = ref(imageDb, "images/");
       try {
         const result = await listAll(storageRef);
         const urls = await Promise.all(
           result.items.map((item) => getDownloadURL(item))
         );
-        // setImageUrls(urls);
       } catch (error) {
         console.error("Lỗi tải ảnh từ Firebase:", error);
       }
@@ -70,29 +82,22 @@ const Label = forwardRef((props, sref) => {
     try {
       const storageRef = ref(imageDb, "multipleFiles/");
       const result = await listAll(storageRef);
-      console.log("====================================");
-      console.log("result hehe", result);
-      console.log("====================================");
-      // Lấy metadata của từng file và sắp xếp theo thời gian chỉnh sửa cuối cùng
       const filesWithMetadata = await Promise.all(
         result.items.map(async (item) => {
-          const metadata = await getMetadata(item); // Lấy metadata của từng file
+          const metadata = await getMetadata(item);
           return {
             ref: item,
-            lastModified: metadata.updated, // Thời gian cập nhật cuối cùng
+            lastModified: metadata.updated,
           };
         })
       );
 
-      // Sắp xếp danh sách file theo lastModified (mới nhất trước)
       filesWithMetadata.sort((a, b) => b.lastModified - a.lastModified);
-
-      // Cập nhật danh sách file đã sắp xếp
       setImageList(filesWithMetadata.map((file) => file.ref));
-      setTotalImages(filesWithMetadata.length); // Cập nhật số lượng ảnh
+      setTotalImages(filesWithMetadata.length);
 
       if (filesWithMetadata.length > 0) {
-        loadImage(filesWithMetadata[0].ref, 0); // Tải ảnh đầu tiên trong danh sách đã sắp xếp
+        loadImage(filesWithMetadata[0].ref, 0);
       }
     } catch (error) {
       console.error("Lỗi khi tải danh sách ảnh:", error);
@@ -139,7 +144,7 @@ const Label = forwardRef((props, sref) => {
       await updateDoc(docRef, {
         [imagePath]: {
           label,
-          labeledBy: "user@email.com", // (Có thể lấy từ auth nếu có)
+          labeledBy: "user@email.com",
           timestamp: new Date().toISOString(),
         },
       });
@@ -167,7 +172,6 @@ const Label = forwardRef((props, sref) => {
       alert("Vui lòng nhập nhãn!");
       return;
     }
-
     try {
       const oldPath = `multipleFiles/${img.name}`;
       const newPath = `labeled_images/${img.name}`;
@@ -176,8 +180,6 @@ const Label = forwardRef((props, sref) => {
       const oldImageUrl = await getDownloadURL(oldImageRef);
       const response = await fetch(oldImageUrl);
       const blob = await response.blob();
-
-      // ✅ Cập nhật danh sách UI trước khi lưu Firebase
       const newLabeledData = {
         name: img.name,
         url: oldImageUrl,
@@ -186,7 +188,6 @@ const Label = forwardRef((props, sref) => {
       setLatestLabeled((prev) => [newLabeledData, ...prev].slice(0, 6));
       setAllLabeledImages((prev) => [newLabeledData, ...prev]);
 
-      // 🕒 Thực hiện các thao tác Firebase nhưng không ảnh hưởng UI
       await uploadBytes(newImageRef, blob);
       await setDoc(doc(firestoreDb, "labeled_images", img.name), {
         label: newLabel.trim(),
@@ -197,8 +198,6 @@ const Label = forwardRef((props, sref) => {
 
       await deleteObject(oldImageRef);
       setImageList((prev) => prev.filter((image) => image.name !== img.name));
-
-      // Chuyển sang ảnh tiếp theo
       handleNextImage();
       setLabel("");
     } catch (error) {
@@ -216,16 +215,13 @@ const Label = forwardRef((props, sref) => {
         ...doc.data(),
       }));
 
-      // Sắp xếp theo timestamp mới nhất trước
       labeledData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-      // ✅ Lấy URL ảnh từ Firebase Storage
       const labeledImagesWithUrls = await Promise.all(
         labeledData.map(async (item) => {
           try {
             const imageRef = ref(imageDb, `labeled_images/${item.name}`);
             const url = await getDownloadURL(imageRef);
-            return { ...item, url }; // Thêm URL vào dữ liệu
+            return { ...item, url };
           } catch (error) {
             console.error(`Lỗi lấy URL ảnh ${item.name}:`, error);
             return null;
@@ -233,14 +229,12 @@ const Label = forwardRef((props, sref) => {
         })
       );
 
-      // Lọc bỏ ảnh không lấy được URL
       const filteredImages = labeledImagesWithUrls.filter(
         (img) => img !== null
       );
 
-      // Cập nhật state
       setAllLabeledImages(filteredImages);
-      setLatestLabeled(filteredImages.slice(0, 6)); // Lấy 6 ảnh gần nhất
+      setLatestLabeled(filteredImages.slice(0, 6));
     } catch (error) {
       console.error("Lỗi khi tải danh sách ảnh đã labeled:", error);
     }
@@ -264,27 +258,21 @@ const Label = forwardRef((props, sref) => {
       })
     );
 
-    setLatestLabeled(recentImages.filter(Boolean)); // Lọc bỏ ảnh lỗi
+    setLatestLabeled(recentImages.filter(Boolean));
     setPageIndex(page);
   };
 
   const handleDeleteLabeledImage = async (imageName) => {
     try {
       const imageRef = ref(imageDb, `multipleFiles/${imageName}`);
-
-      // Kiểm tra nếu URL hợp lệ (chỉ để debug, không thực sự cần thiết để xóa)
       await getDownloadURL(imageRef);
-
-      // Xóa ảnh khỏi Firebase Storage
       await deleteObject(imageRef);
 
-      // Cập nhật danh sách ảnh ngay lập tức
       setImageList((prevList) => {
         const updatedList = prevList.filter(
           (image) => image.name !== imageName
         );
 
-        // Cập nhật chỉ số ảnh hiện tại nếu cần
         setCurrentIndex((prevIndex) =>
           Math.min(prevIndex, updatedList.length - 1)
         );
@@ -292,7 +280,6 @@ const Label = forwardRef((props, sref) => {
         return updatedList;
       });
 
-      // Cập nhật tổng số ảnh
       setTotalImages((prevTotal) => Math.max(prevTotal - 1, 0));
 
       console.log(`Đã xóa ảnh: ${imageName}`);
@@ -313,33 +300,79 @@ const Label = forwardRef((props, sref) => {
     }
   };
 
+  const handleStopLabeling = () => {
+    const csvContent = [
+      [
+        "Image Path",
+        "Label",
+        "Labeled By",
+        "Top Left (x,y)",
+        "Bottom Right (x,y)",
+      ],
+      ...allLabeledImages.map((img) => [
+        img.imagePath,
+        img.label,
+        img.labeledBy,
+        img.coordinates
+          ? `${img.coordinates.topLeft.x},${img.coordinates.topLeft.y}`
+          : "",
+        img.coordinates
+          ? `${img.coordinates.bottomRight.x},${img.coordinates.bottomRight.y}`
+          : "",
+      ]),
+      ...imageList.map((img) => [`multipleFiles/${img.name}`, "", "", "", ""]),
+    ]
+      .map((e) => e.join(","))
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "labeled_images.csv");
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleSaveUpdatedLabel = async (index) => {
+    const updatedLabel = latestLabeled[index];
     try {
-      const img = latestLabeled[index]; // Lấy ảnh cần cập nhật
-      if (!img || !img.name) {
-        console.error("Ảnh không hợp lệ để cập nhật.");
-        return;
-      }
-
-      // Tham chiếu tới document của ảnh trong Firestore
-      const docRef = doc(firestoreDb, "labeled_images", img.name);
-
-      // Dữ liệu cập nhật
-      const updatedLabelData = {
-        label: img.label.trim(),
+      await setDoc(doc(firestoreDb, "labeled_images", updatedLabel.name), {
+        label: updatedLabel.label.trim(),
         labeledBy: "user@email.com",
+        imagePath: `labeled_images/${updatedLabel.name}`,
         timestamp: new Date().toISOString(),
-      };
-
-      // Cập nhật nhãn mới cho ảnh
-      await updateDoc(docRef, updatedLabelData);
-
-      console.log(`Đã cập nhật nhãn cho ảnh: ${img.name}`);
-
-      // Cập nhật lại danh sách ảnh đã labeled gần đây
-      fetchAllLabeledImages();
+        coordinates: updatedLabel.coordinates ?? null,
+      });
+      console.log("Label updated successfully");
+      // Update the state to reflect the changes
+      setLatestLabeled((prev) =>
+        prev.map((item, idx) =>
+          idx === index ? { ...item, label: updatedLabel.label } : item
+        )
+      );
+      // Update allLabeledImages to reflect the changes
+      setAllLabeledImages((prev) =>
+        prev.map((item) =>
+          item.name === updatedLabel.name
+            ? { ...item, label: updatedLabel.label }
+            : item
+        )
+      );
     } catch (error) {
-      console.error("Lỗi khi cập nhật nhãn:", error);
+      console.error("Error updating label:", error);
+    }
+  };
+
+  const handleDeleteRecentLabeledImage = async (imageName) => {
+    try {
+      await deleteDoc(doc(firestoreDb, "labeled_images", imageName));
+      setLatestLabeled((prev) => prev.filter((img) => img.name !== imageName));
+      console.log("Image deleted successfully");
+    } catch (error) {
+      console.error("Error deleting image:", error);
     }
   };
 
@@ -360,7 +393,7 @@ const Label = forwardRef((props, sref) => {
                     onClick={handlePrevImage}
                     disabled={currentIndex === 0}
                   >
-                    {"<"} Ảnh trước
+                    {"<"} Prev
                   </button>
                   <span>
                     {currentIndex + 1} / {imageList.length}
@@ -369,46 +402,53 @@ const Label = forwardRef((props, sref) => {
                     onClick={handleNextImage}
                     disabled={currentIndex === imageList.length - 1}
                   >
-                    Ảnh sau {">"}
+                    Next {">"}
                   </button>
                 </div>
                 <p>
-                  <b>Trạng thái:</b>{" "}
+                  <b>Status:</b>{" "}
                   {imageInfo.label
                     ? `${imageInfo.label} - ${imageInfo.labeledBy}`
-                    : "Chưa label"}
+                    : "Unlabeled"}
                 </p>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  placeholder="Nhập nhãn..."
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSaveLabel()}
-                />
-                <button
-                  onClick={async () => {
-                    await handleDeleteLabeledImage(selectedImage.name);
-                    handleNextImage();
-                  }}
-                >
-                  Xóa ảnh
-                </button>
               </div>
             )}
+            <div className="label-input-container">
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Enter label..."
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveLabel()}
+              />
+              <button
+                onClick={async () => {
+                  await handleDeleteLabeledImage(selectedImage.name);
+                  handleNextImage();
+                }}
+              >
+                Delete
+              </button>
+            </div>
             <button type="success" onClick={() => setShowCrop(true)}>
               Crop Image
+            </button>
+            <button onClick={handleStopLabeling} className="stop-button">
+              Stop
             </button>
           </>
         ) : (
           <CropComponent
             imageUrl={imageUrl}
-            onUploadComplete={async (uploadedData) => {
+            selectedImage={selectedImage}
+            imageList={imageList}
+            setImageList={setImageList}
+            setSelectedImage={setSelectedImage}
+            setImageUrl={setImageUrl}
+            onUploadComplete={async (uploadedDataArray) => {
               setShowCrop(false);
-              setLabel(uploadedData.label);
-              // Ensure uploadedData contains the name property
-              if (uploadedData.name) {
-                // Save the new label and coordinates to Firestore
+              for (const uploadedData of uploadedDataArray) {
                 await setDoc(
                   doc(firestoreDb, "labeled_images", uploadedData.name),
                   {
@@ -416,48 +456,28 @@ const Label = forwardRef((props, sref) => {
                     labeledBy: "user@email.com",
                     imagePath: `labeled_images/${uploadedData.name}`,
                     timestamp: new Date().toISOString(),
-                    coordinates: uploadedData.coordinates, // Save coordinates
+                    coordinates: uploadedData.coordinates,
                   }
                 );
-                // Prepend the new labeled image to latestLabeled
                 setLatestLabeled((prev) =>
                   [
-                    { label: uploadedData.label, url: uploadedData.url },
+                    {
+                      label: uploadedData.label,
+                      url: uploadedData.url,
+                      name: uploadedData.name,
+                      coordinates: uploadedData.coordinates,
+                    },
                     ...prev,
                   ].slice(0, 6)
                 );
-                // Delete the original image
-                if (selectedImage) {
-                  const oldImageRef = ref(
-                    imageDb,
-                    `multipleFiles/${selectedImage.name}`
-                  );
-                  await deleteObject(oldImageRef);
-                  setImageList((prev) =>
-                    prev.filter((image) => image.name !== selectedImage.name)
-                  );
-                  // Automatically move to the next image
-                  if (imageList.length > 1) {
-                    loadImage(imageList[1], 0);
-                  } else {
-                    setImageUrl("");
-                    setSelectedImage(null);
-                  }
-                }
-                fetchAllLabeledImages();
-                loadImageList(); // Reload the image list to reflect the deletion
-              } else {
-                console.error(
-                  "Uploaded data does not contain a name property."
-                );
               }
             }}
+            onExit={() => setShowCrop(false)}
           />
         )}
       </div>
       <div className="recent-labels">
-        <h2>Ảnh Labelled Gần đây</h2>
-
+        <h2>Recent Labeled</h2>
         <div className="recent-images">
           {latestLabeled.map((img, index) => (
             <div key={index} className="recent-item">
@@ -474,11 +494,10 @@ const Label = forwardRef((props, sref) => {
                     type="text"
                     value={img.label}
                     onChange={(e) => {
+                      const newLabel = e.target.value;
                       setLatestLabeled((prev) =>
                         prev.map((item, idx) =>
-                          idx === index
-                            ? { ...item, label: e.target.value }
-                            : item
+                          idx === index ? { ...item, label: newLabel } : item
                         )
                       );
                     }}
@@ -489,13 +508,13 @@ const Label = forwardRef((props, sref) => {
                     className="save-button"
                     onClick={() => handleSaveUpdatedLabel(index)}
                   >
-                    Lưu
+                    Save
                   </button>
                   <button
                     className="delete-button"
-                    onClick={() => handleDeleteLabeledImage(img.name)}
+                    onClick={() => handleDeleteRecentLabeledImage(img.name)}
                   >
-                    Xóa
+                    <AiTwotoneDelete size={20} color="white" />
                   </button>
                 </div>
               </div>
@@ -504,14 +523,14 @@ const Label = forwardRef((props, sref) => {
         </div>
         <div className="pagination">
           <button onClick={handlePrevPage} disabled={pageIndex === 0}>
-            {"<"} Trước
+            {"<"} Prev
           </button>
-          <span>Trang {pageIndex + 1}</span>
+          <span>Page {pageIndex + 1}</span>
           <button
             onClick={handleNextPage}
             disabled={(pageIndex + 1) * 6 >= allLabeledImages.length}
           >
-            Sau {">"}
+            Next {">"}
           </button>
         </div>
       </div>

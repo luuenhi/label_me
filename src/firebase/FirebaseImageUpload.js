@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { ref, uploadBytes, getDownloadURL, listAll } from "firebase/storage";
 import { imageDb } from "./firebaseConfig";
 import { v4 as uuidv4 } from "uuid";
+import "./FirebaseImageUpload.css"; // Import the CSS file
 
 function FirebaseImageUpload({ onUploadSuccess }) {
   const [images, setImages] = useState([]);
@@ -62,8 +63,6 @@ function FirebaseImageUpload({ onUploadSuccess }) {
         event.preventDefault();
         if (imagesRef.current.length > 0) {
           uploadFiles();
-        } else {
-          setMessage("Vui lòng chọn ít nhất một ảnh!");
         }
       }
     };
@@ -73,18 +72,20 @@ function FirebaseImageUpload({ onUploadSuccess }) {
   }, []);
 
   return (
-    <div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*"
-        onChange={handleFileSelect}
-      />
-      <button onClick={uploadFiles} disabled={uploading}>
-        {uploading ? "Đang upload..." : "Submit"}
-      </button>
-      {message && <p>{message}</p>}
+    <div className="upload-container">
+      <div className="upload-controls">
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*"
+          onChange={handleFileSelect}
+        />
+        <button onClick={uploadFiles} disabled={uploading}>
+          {uploading ? "Đang upload..." : "Submit"}
+        </button>
+        {message && <p className="message">{message}</p>}
+      </div>
     </div>
   );
 }

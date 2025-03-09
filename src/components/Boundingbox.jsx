@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css"; // Import CSS của cropper
+import "./Boundingbox.css"; // Import the CSS file
 
 const Boundingbox = ({ onCropComplete, onUploadCroppedImage }) => {
   const cropperRef = useRef(null);
@@ -98,13 +99,13 @@ const Boundingbox = ({ onCropComplete, onUploadCroppedImage }) => {
 
       {/* Buttons */}
       <div style={{ marginTop: "20px" }}>
-        <button onClick={cropImage} style={{ marginRight: "10px" }}>
+        <button onClick={cropImage} className="button">
           Crop Image
         </button>
         {croppedImage && (
           <button
             onClick={() => onUploadCroppedImage(croppedImage)}
-            style={{ marginRight: "10px" }}
+            className="button"
           >
             Upload Cropped Image
           </button>
