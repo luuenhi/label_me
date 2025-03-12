@@ -1,130 +1,181 @@
 import React, { useRef, useState } from "react";
 import Cropper from "react-cropper";
-import "cropperjs/dist/cropper.css"; // Import CSS của cropper
-import "./Boundingbox.css"; // Import the CSS file
+import "cropperjs/dist/cropper.css";
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
+import { imageDb } from "../firebase/firebaseConfig";
+import { v4 as uuidv4 } from "uuid";
+import "./CropComponent.css";
 
-const Boundingbox = ({ onCropComplete, onUploadCroppedImage }) => {
+export default function CropComponent({
+  imageUrl,
+  selectedImage,
+  imageList,
+  setImageList,
+  setSelectedImage,
+  setImageUrl,
+  onUploadComplete,
+  onExit,
+}) {
   const cropperRef = useRef(null);
-  const [image, setImage] = useState(""); // Ảnh gốc
-  const [croppedImage, setCroppedImage] = useState("");
-  const [cropBox, setCropBox] = useState(null); // Lưu vị trí và kích thước của crop box
+  const [croppedImages, setCroppedImages] = useState([]);
+  const [fileName, setFileName] = useState("");
 
-  // Khi người dùng chọn ảnh
-  const onImageChange = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
+  // Convert DataURL to File
+  const dataURLtoFile = (dataurl, filename) => {
+    const arr = dataurl.split(",");
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  };
 
-      reader.onload = () => {
-        setImage(reader.result);
-      };
-      reader.readAsDataURL(file);
+  // Crop image
+  const onCrop = () => {
+    const cropper = cropperRef.current?.cropper;
+    if (cropper && fileName) {
+      const croppedDataUrl = cropper.getCroppedCanvas().toDataURL();
+      setCroppedImages((prev) => [
+        ...prev,
+        { dataUrl: croppedDataUrl, fileName },
+      ]);
+      setFileName("");
+    } else {
+      alert("Please enter a label before cropping.");
     }
   };
 
-  // Cập nhật bounding box khi crop thay đổi
-  const onCropMove = () => {
-    const cropper = cropperRef.current?.cropper;
-    if (cropper) {
-      const cropBoxData = cropper.getCropBoxData();
-      setCropBox(cropBoxData);
-    }
+  // Delete cropped image
+  const handleDeleteCroppedImage = (index) => {
+    setCroppedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Cắt ảnh
-  const cropImage = () => {
-    const cropper = cropperRef.current?.cropper;
-    if (cropper) {
-      const croppedCanvas = cropper.getCroppedCanvas();
-      setCroppedImage(croppedCanvas.toDataURL());
-
-      // Lấy tọa độ của điểm góc trên trái và dưới phải
-      const cropBoxData = cropper.getCropBoxData();
-      const coordinates = {
-        topLeft: { x: cropBoxData.left, y: cropBoxData.top },
-        bottomRight: {
-          x: cropBoxData.left + cropBoxData.width,
-          y: cropBoxData.top + cropBoxData.height,
-        },
-      };
-
-      // Gọi hàm callback để truyền dữ liệu ra ngoài
-      onCropComplete(coordinates);
-      setCropBox(cropBoxData); // Update cropBox state to display bounding box
+  // Upload all cropped images
+  const handleUploadAll = async () => {
+    if (croppedImages.length === 0) {
+      alert("No cropped images to upload.");
+      return;
     }
+
+    console.log("Uploading all cropped images:", croppedImages);
+    const uploadedDataArray = [];
+
+    for (const { dataUrl, fileName } of croppedImages) {
+      const file = dataURLtoFile(dataUrl, fileName);
+      try {
+        const uniqueFileName = `${uuidv4()}_${file.name}`;
+        const imagePath = `labeled_images/${uniqueFileName}`;
+        const imageRef = ref(imageDb, imagePath);
+
+        await uploadBytes(imageRef, file);
+        const url = await getDownloadURL(imageRef);
+
+        const cropper = cropperRef.current?.cropper;
+        let coordinates = null;
+        if (cropper) {
+          const cropBoxData = cropper.getCropBoxData();
+          coordinates = {
+            topLeft: { x: cropBoxData.left, y: cropBoxData.top },
+            bottomRight: {
+              x: cropBoxData.left + cropBoxData.width,
+              y: cropBoxData.top + cropBoxData.height,
+            },
+          };
+        }
+
+        uploadedDataArray.push({
+          name: uniqueFileName,
+          label: fileName,
+          url,
+          coordinates,
+        });
+      } catch (error) {
+        console.error("Upload error:", error);
+        return;
+      }
+    }
+
+    // Delete original image if all images are uploaded successfully
+    if (uploadedDataArray.length === croppedImages.length && selectedImage) {
+      try {
+        const originalImageRef = ref(
+          imageDb,
+          `multipleFiles/${selectedImage.name}`
+        );
+        await deleteObject(originalImageRef);
+        console.log("Original image deleted:", selectedImage.name);
+
+        setImageList((prev) =>
+          prev.filter((image) => image.name !== selectedImage.name)
+        );
+        if (imageList.length > 1) {
+          setSelectedImage(imageList[1]);
+        } else {
+          setImageUrl("");
+          setSelectedImage(null);
+        }
+      } catch (error) {
+        console.error("Error deleting original image:", error);
+      }
+    }
+
+    setCroppedImages([]);
+    if (onUploadComplete) onUploadComplete(uploadedDataArray);
   };
 
   return (
-    <div style={{ padding: "20px" }}>
-      <h2>React Cropper Example</h2>
-
-      {/* Input chọn ảnh */}
-      <input
-        type="file"
-        accept="image/*"
-        onChange={onImageChange}
-        style={{ marginBottom: "20px" }}
-      />
-
-      {/* Cropper Component */}
-      <div style={{ position: "relative" }}>
-        {image && (
-          <Cropper
-            src={image}
-            style={{ height: 400, width: "100%" }}
-            aspectRatio={16 / 9} // Tùy chỉnh tỉ lệ crop
-            guides={false} // Tắt guides mặc định
-            ref={cropperRef}
-            cropBoxResizable={true} // Cho phép resize box crop
-            viewMode={1} // Giới hạn crop trong vùng ảnh
-            cropmove={onCropMove} // Lắng nghe sự kiện crop di chuyển
-          />
-        )}
-
-        {/* Hiển thị Bounding Box màu đỏ theo crop box */}
-        {cropBox && (
-          <div
-            style={{
-              position: "absolute",
-              top: `${cropBox.top}px`,
-              left: `${cropBox.left}px`,
-              width: `${cropBox.width}px`,
-              height: `${cropBox.height}px`,
-              border: "2px solid red",
-              pointerEvents: "none",
-            }}
-          />
-        )}
+    <div className="crop-container">
+      <div className="cropper-wrapper">
+        <Cropper
+          src={imageUrl}
+          style={{ height: 400, width: "100%" }}
+          initialAspectRatio={16 / 9}
+          guides={true}
+          ref={cropperRef}
+        />
       </div>
-
-      {/* Buttons */}
-      <div style={{ marginTop: "20px" }}>
-        <button onClick={cropImage} className="button">
-          Crop Image
+      <div className="upload-controls">
+        <input
+          type="text"
+          placeholder="Enter label..."
+          value={fileName}
+          onChange={(e) => setFileName(e.target.value)}
+        />
+        <button onClick={onCrop}>Crop</button>
+      </div>
+      <div className="cropped-images-container">
+        {croppedImages.map((img, index) => (
+          <div key={index} className="cropped-image-wrapper">
+            <img
+              src={img.dataUrl}
+              alt={`Cropped ${index}`}
+              className="cropped-image"
+            />
+            <button
+              className="delete-button"
+              onClick={() => handleDeleteCroppedImage(index)}
+            >
+              X
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="button-group">
+        <button onClick={handleUploadAll} className="upload-button">
+          Upload All
         </button>
-        {croppedImage && (
-          <button
-            onClick={() => onUploadCroppedImage(croppedImage)}
-            className="button"
-          >
-            Upload Cropped Image
-          </button>
-        )}
+        <button onClick={onExit} className="exit-button">
+          Exit
+        </button>
       </div>
-
-      {/* Hiển thị ảnh đã crop */}
-      {croppedImage && (
-        <div>
-          <h3>Cropped Image</h3>
-          <img
-            src={croppedImage}
-            alt="Cropped"
-            style={{ maxWidth: "100%", marginTop: "10px" }}
-          />
-        </div>
-      )}
     </div>
   );
-};
-
-export default Boundingbox;
+}

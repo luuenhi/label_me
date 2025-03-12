@@ -40,16 +40,18 @@ export default function CropComponent({
 
   // Crop image
   const onCrop = () => {
+    if (!fileName) {
+      alert("Please enter a label before cropping.");
+      return;
+    }
     const cropper = cropperRef.current?.cropper;
-    if (cropper && fileName) {
+    if (cropper) {
       const croppedDataUrl = cropper.getCroppedCanvas().toDataURL();
       setCroppedImages((prev) => [
         ...prev,
         { dataUrl: croppedDataUrl, fileName },
       ]);
       setFileName("");
-    } else {
-      alert("Please enter a label before cropping.");
     }
   };
 
@@ -135,11 +137,18 @@ export default function CropComponent({
     <div className="crop-container">
       <div className="cropper-wrapper">
         <Cropper
+          ref={cropperRef}
           src={imageUrl}
           style={{ height: 400, width: "100%" }}
           initialAspectRatio={16 / 9}
           guides={true}
-          ref={cropperRef}
+          viewMode={1}
+          minCropBoxHeight={10}
+          minCropBoxWidth={10}
+          background={false}
+          responsive={true}
+          autoCropArea={1}
+          checkOrientation={false}
         />
       </div>
       <div className="upload-controls">
@@ -162,9 +171,11 @@ export default function CropComponent({
             <button
               className="delete-button"
               onClick={() => handleDeleteCroppedImage(index)}
+              title="Delete image"
             >
-              X
+              ×
             </button>
+            <div className="image-label">{img.fileName}</div>
           </div>
         ))}
       </div>

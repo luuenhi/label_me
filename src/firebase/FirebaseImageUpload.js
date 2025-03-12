@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { ref, uploadBytes, getDownloadURL, listAll } from "firebase/storage";
 import { imageDb } from "./firebaseConfig";
 import { v4 as uuidv4 } from "uuid";
-import "./FirebaseImageUpload.css"; // Import the CSS file
+import "./FirebaseImageUpload.css";
 
 function FirebaseImageUpload({ onUploadSuccess }) {
   const [images, setImages] = useState([]);
@@ -39,19 +39,18 @@ function FirebaseImageUpload({ onUploadSuccess }) {
 
       await Promise.all(uploadTasks);
 
-      setMessage(`Upload ${uploadedImages.length} ảnh thành công!`);
+      setMessage(`Upload ${uploadedImages.length} success!`);
       setTimeout(() => setMessage(""), 5000);
       setImages([]);
       imagesRef.current = [];
       fileInputRef.current.value = null;
 
-      // ✅ Gọi `onUploadSuccess` để cập nhật danh sách ảnh ngay lập tức
       if (onUploadSuccess) {
-        onUploadSuccess(uploadedImages.map((img) => img.url)); // Pass URLs to onUploadSuccess
+        onUploadSuccess(uploadedImages.map((img) => img.url));
       }
     } catch (error) {
       console.error("Upload Error:", error);
-      setMessage("Lỗi upload: " + error.message);
+      setMessage("Upload error!: " + error.message);
     }
 
     setUploading(false);
@@ -82,7 +81,7 @@ function FirebaseImageUpload({ onUploadSuccess }) {
           onChange={handleFileSelect}
         />
         <button onClick={uploadFiles} disabled={uploading}>
-          {uploading ? "Đang upload..." : "Submit"}
+          {uploading ? "Uploading..." : "Submit"}
         </button>
         {message && <p className="message">{message}</p>}
       </div>
