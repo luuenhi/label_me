@@ -25,7 +25,6 @@ export default function CropComponent({
   const [croppedImages, setCroppedImages] = useState([]);
   const [fileName, setFileName] = useState("");
 
-  // Convert DataURL to File
   const dataURLtoFile = (dataurl, filename) => {
     const arr = dataurl.split(",");
     const mime = arr[0].match(/:(.*?);/)[1];
@@ -38,7 +37,6 @@ export default function CropComponent({
     return new File([u8arr], filename, { type: mime });
   };
 
-  // Crop image
   const onCrop = () => {
     if (!fileName) {
       alert("Please enter a label before cropping.");
@@ -55,12 +53,10 @@ export default function CropComponent({
     }
   };
 
-  // Delete cropped image
   const handleDeleteCroppedImage = (index) => {
     setCroppedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Upload all cropped images
   const handleUploadAll = async () => {
     if (croppedImages.length === 0) {
       alert("No cropped images to upload.");
@@ -105,7 +101,6 @@ export default function CropComponent({
       }
     }
 
-    // Delete original image if all images are uploaded successfully
     if (uploadedDataArray.length === croppedImages.length && selectedImage) {
       try {
         const originalImageRef = ref(

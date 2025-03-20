@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "label-b1"
-  }
+    "default": "image-label-2d36f"
+  },
+  "targets": {},
+  "etags": {}
 }

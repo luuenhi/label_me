@@ -15,9 +15,8 @@ import {
   uploadBytes,
 } from "firebase/storage";
 import {
-  deleteField,
   doc,
-  getDoc,
+  // getDoc,
   setDoc,
   updateDoc,
   collection,
@@ -25,9 +24,22 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import CropComponent from "./CropComponent";
-import { AiTwotoneDelete } from "react-icons/ai";
+// import { AiTwotoneDelete } from "react-icons/ai";
 import { RiDeleteBinLine } from "react-icons/ri";
 import "./Label.css";
+
+import { getStorage } from "firebase/storage";
+
+const storage = getStorage();
+const storageRef = ref(storage, "path-to-your-file");
+
+getDownloadURL(storageRef)
+  .then((url) => {
+    console.log("Download URL:", url);
+  })
+  .catch((error) => {
+    console.error("Error fetching file:", error);
+  });
 
 const Label = forwardRef((props, sref) => {
   const [imageList, setImageList] = useState([]);
@@ -43,6 +55,15 @@ const Label = forwardRef((props, sref) => {
   const [totalImages, setTotalImages] = useState(0);
   const [showCrop, setShowCrop] = useState(false);
   const [message, setMessage] = useState("");
+
+  const { user } = props;
+
+  useImperativeHandle(sref, () => ({
+    handleUpload: (fileUrls) => {
+      setImageUrl(fileUrls);
+      loadImageList();
+    },
+  }));
 
   useImperativeHandle(sref, () => ({
     handleUpload: (fileUrls) => {
@@ -65,25 +86,11 @@ const Label = forwardRef((props, sref) => {
     }
   }, [imageList]);
 
-  useEffect(() => {
-    const fetchImages = async () => {
-      const storageRef = ref(imageDb, "images/");
-      try {
-        const result = await listAll(storageRef);
-        const urls = await Promise.all(
-          result.items.map((item) => getDownloadURL(item))
-        );
-      } catch (error) {
-        console.error("Lỗi tải ảnh từ Firebase:", error);
-      }
-    };
-    fetchImages();
-  }, []);
-
   const loadImageList = async () => {
     try {
       const storageRef = ref(imageDb, "multipleFiles/");
       const result = await listAll(storageRef);
+      console.log("Tải danh sách ảnh thành công:", result.items);
       const filesWithMetadata = await Promise.all(
         result.items.map(async (item) => {
           const metadata = await getMetadata(item);
@@ -114,6 +121,9 @@ const Label = forwardRef((props, sref) => {
       setCurrentIndex(index);
       setSelectedImage(imageRef);
 
+      // Get the base filename after the last underscore
+      const currentImageBaseName = imageRef.name.split("_").pop();
+
       // Kiểm tra label trong Firestore
       const querySnapshot = await getDocs(
         collection(firestoreDb, "labeled_images")
@@ -122,11 +132,10 @@ const Label = forwardRef((props, sref) => {
       // Tìm document có label cho ảnh này
       const labelDoc = querySnapshot.docs.find((doc) => {
         const data = doc.data();
-        // Kiểm tra cả hai trường hợp: ảnh trong multipleFiles và labeled_images
-        return (
-          data.imagePath === `multipleFiles/${imageRef.name}` ||
-          data.imagePath === `labeled_images/${imageRef.name}`
-        );
+        // Extract the base filename from the stored imagePath
+        const storedImageBaseName = data.imagePath.split("_").pop();
+
+        return currentImageBaseName === storedImageBaseName;
       });
 
       if (labelDoc && labelDoc.data().label) {
@@ -154,24 +163,6 @@ const Label = forwardRef((props, sref) => {
     }
   };
 
-  const moveImage = async (imagePath, label) => {
-    try {
-      const docRef = doc(firestoreDb, "labeled_images", "labels");
-
-      await updateDoc(docRef, {
-        [imagePath]: {
-          label,
-          labeledBy: "user@email.com",
-          timestamp: new Date().toISOString(),
-        },
-      });
-
-      console.log(`Đã lưu nhãn cho ảnh: ${imagePath}`);
-    } catch (error) {
-      console.error("Lỗi khi lưu nhãn:", error);
-    }
-  };
-
   const handlePrevImage = () => {
     if (currentIndex > 0) {
       loadImage(imageList[currentIndex - 1], currentIndex - 1);
@@ -185,7 +176,8 @@ const Label = forwardRef((props, sref) => {
   };
 
   const handleSaveLabel = async (img = selectedImage, newLabel = label) => {
-    if (!img || !newLabel.trim()) {
+    if (!img || !img.name || !newLabel.trim()) {
+      console.log("Không có nhãn hoặc ảnh chưa được chọn.");
       alert("Vui lòng nhập nhãn!");
       return;
     }
@@ -193,8 +185,11 @@ const Label = forwardRef((props, sref) => {
     try {
       console.log("Saving label for:", img.name);
 
+      // Các bước lưu nhãn vào Firestore và Storage...
       const originalImageRef = ref(imageDb, `multipleFiles/${img.name}`);
       const newImageRef = ref(imageDb, `labeled_images/${img.name}`);
+
+      console.log("Uploading label...");
 
       setImageList((prev) => prev.filter((image) => image.name !== img.name));
       setLabel("");
@@ -214,7 +209,7 @@ const Label = forwardRef((props, sref) => {
         (() => {
           const labelData = {
             label: newLabel.trim(),
-            labeledBy: "user@email.com",
+            labeledBy: user.email,
             imagePath: `labeled_images/${img.name}`,
             originalPath: `multipleFiles/${img.name}`,
             status: "labeled",
@@ -236,7 +231,7 @@ const Label = forwardRef((props, sref) => {
         name: img.name,
         url: newImageUrl,
         label: newLabel.trim(),
-        labeledBy: "user@email.com",
+        labeledBy: user.email,
         imagePath: `labeled_images/${img.name}`,
         originalPath: `multipleFiles/${img.name}`,
         status: "labeled",
@@ -317,12 +312,28 @@ const Label = forwardRef((props, sref) => {
   const handleDeleteLabeledImage = async (imageName) => {
     try {
       const imageRef = ref(imageDb, `multipleFiles/${imageName}`);
+      // Delete from Storage
       try {
         await deleteObject(imageRef);
         console.log("Đã xóa ảnh từ multipleFiles:", imageName);
       } catch (error) {
         console.log("Ảnh không tồn tại trong Storage hoặc đã bị xóa");
       }
+
+      // Delete from Firestore collection
+      const querySnapshot = await getDocs(
+        collection(firestoreDb, "labeled_images")
+      );
+      const docToDelete = querySnapshot.docs.find((doc) => {
+        const data = doc.data();
+        return data.imagePath.split("_").pop() === imageName.split("_").pop();
+      });
+
+      if (docToDelete) {
+        await deleteDoc(docToDelete.ref);
+        console.log("Đã xóa document từ Firestore");
+      }
+
       setImageList((prevList) =>
         prevList.filter((image) => image.name !== imageName)
       );
@@ -333,6 +344,7 @@ const Label = forwardRef((props, sref) => {
       } else {
         handleNextImage();
       }
+
       setImageInfo({
         label: "",
         labeledBy: "",
@@ -360,47 +372,28 @@ const Label = forwardRef((props, sref) => {
     }
   };
 
-  // const handleStopLabeling = () => {
-  //   const csvContent = [
-  //     [
-  //       "Image Path",
-  //       "Label",
-  //       "Labeled By",
-  //       "Top Left (x,y)",
-  //       "Bottom Right (x,y)",
-  //     ],
-
-  //     ...allLabeledImages.map((img) => [
-  //       img.imagePath,
-  //       img.label,
-  //       img.labeledBy,
-  //       img.coordinates
-  //         ? `${img.coordinates.topLeft.x},${img.coordinates.topLeft.y}`
-  //         : "",
-  //       img.coordinates
-  //         ? `${img.coordinates.bottomRight.x},${img.coordinates.bottomRight.y}`
-  //         : "",
-  //     ]),
-  //   ]
-  //     .map((e) => e.join(","))
-  //     .join("\n");
-
-  //   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  //   const url = URL.createObjectURL(blob);
-  //   const link = document.createElement("a");
-  //   link.setAttribute("href", url);
-  //   link.setAttribute("download", "labeled_images.csv");
-  //   link.style.visibility = "hidden";
-  //   document.body.appendChild(link);
-  //   link.click();
-  //   document.body.removeChild(link);
-  // };
-
-  const handleStopLabeling = () => {
+  const handleStopLabeling = async () => {
     if (allLabeledImages.length === 0) {
       alert("Không có ảnh nào để lưu.");
       return;
     }
+
+    const labeledImagesWithUrls = await Promise.all(
+      allLabeledImages.map(async (img) => {
+        const imageRef = ref(imageDb, img.imagePath);
+        try {
+          const url = await getDownloadURL(imageRef);
+          return { ...img, url };
+        } catch (error) {
+          console.error(`Lỗi khi lấy URL ảnh ${img.name}:`, error);
+          return null;
+        }
+      })
+    );
+
+    const validLabeledImages = labeledImagesWithUrls.filter(
+      (img) => img !== null
+    );
 
     const csvContent = [
       [
@@ -410,8 +403,8 @@ const Label = forwardRef((props, sref) => {
         "Top Left (x,y)",
         "Bottom Right (x,y)",
       ],
-      ...allLabeledImages.map((img) => [
-        img.imagePath,
+      ...validLabeledImages.map((img) => [
+        img.url,
         img.label,
         img.labeledBy,
         img.coordinates
