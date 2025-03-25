@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@firebasegen/default-connector": "file:dataconnect-generated/js/default-connector",
+    "cropperjs": "^2.0.0",
+    "react-cropper": "^2.3.3",
+    "recharts": "^2.15.1"
+  }
+}

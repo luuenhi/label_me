@@ -1,0 +1,11 @@
+{
+  "projects": {
+    "default": "image-label-2d36f"
+  },
+  "targets": {},
+  "etags": {
+    "image-label-2d36f": {
+      "extensionInstances": {}
+    }
+  }
+}

@@ -1,0 +1,12 @@
+specVersion: "v1beta"
+serviceId: "y"
+location: "asia-southeast1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "label-me"
+      cloudSql:
+        instanceId: "n"
+      # schemaValidation: "COMPATIBLE"
+connectorDirs: ["./connector"]
